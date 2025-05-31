@@ -109,23 +109,32 @@ defmodule ExReadline.LineEditor do
   @impl true
   def handle_call({:read_line, prompt, _opts}, _from, state) do
     # Set up terminal for raw input
-    old_settings = Terminal.setup_raw_mode()
+    case Terminal.setup_raw_mode() do
+      {:ok, terminal_mode} ->
+        # Initialize line state
+        line_state = State.new(
+          prompt: prompt,
+          history: state.history,
+          completion_fn: state.completion_fn
+        )
 
-    # Initialize line state
-    line_state = State.new(
-      prompt: prompt,
-      history: state.history,
-      completion_fn: state.completion_fn
-    )
+        # Show prompt
+        IO.write(prompt)
 
-    # Show prompt
-    IO.write(prompt)
+        # Read input
+        result = read_loop(line_state, terminal_mode)
 
-    # Read input
-    result = read_loop(line_state)
-
-    # Restore terminal settings
-    Terminal.restore_mode(old_settings)
+        # Restore terminal settings
+        Terminal.restore_mode(terminal_mode)
+        
+        handle_result(result, state)
+        
+      {:error, reason} ->
+        {:reply, {:error, reason}, state}
+    end
+  end
+  
+  defp handle_result(result, state) do
 
     # Handle result
     case result do
@@ -167,12 +176,12 @@ defmodule ExReadline.LineEditor do
   defp normalize_path(nil), do: nil
   defp normalize_path(path), do: Path.expand(path)
 
-  defp read_loop(state) do
-    case Terminal.read_key() do
+  defp read_loop(state, terminal_mode) do
+    case Terminal.read_key(terminal_mode) do
       {:ok, key} ->
-        case Keybindings.handle_key(key, state) do
+        case Keybindings.handle_key(key, state, terminal_mode) do
           {:continue, new_state} ->
-            read_loop(new_state)
+            read_loop(new_state, terminal_mode)
             
           {:done, result} ->
             result

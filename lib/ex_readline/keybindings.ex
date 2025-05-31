@@ -34,18 +34,18 @@ defmodule ExReadline.Keybindings do
   - `{:done, {:ok, line}}` when line is complete
   - `{:done, {:error, reason}}` on error
   """
-  @spec handle_key(byte(), State.t()) :: {:continue, State.t()} | {:done, {:ok, binary()} | {:error, term()}}
-  def handle_key(@enter, state) do
+  @spec handle_key(byte(), State.t(), term()) :: {:continue, State.t()} | {:done, {:ok, binary()} | {:error, term()}}
+  def handle_key(@enter, state, _terminal_mode) do
     IO.write("\n")
     {:done, {:ok, state.buffer}}
   end
 
-  def handle_key(@ctrl_c, _state) do
+  def handle_key(@ctrl_c, _state, _terminal_mode) do
     IO.write("^C\n")
     {:done, {:error, :interrupted}}
   end
 
-  def handle_key(@ctrl_d, state) do
+  def handle_key(@ctrl_d, state, _terminal_mode) do
     if state.buffer == "" do
       IO.write("\n")
       {:done, {:error, :interrupted}}
@@ -56,30 +56,30 @@ defmodule ExReadline.Keybindings do
     end
   end
 
-  def handle_key(@backspace, state) do
+  def handle_key(@backspace, state, _terminal_mode) do
     new_state = State.backspace(state)
     Terminal.redraw_line(new_state)
     {:continue, new_state}
   end
 
-  def handle_key(@escape, state) do
-    handle_escape_sequence(state)
+  def handle_key(@escape, state, terminal_mode) do
+    handle_escape_sequence(state, terminal_mode)
   end
 
-  def handle_key(@ctrl_a, state) do
+  def handle_key(@ctrl_a, state, _terminal_mode) do
     new_state = State.move_to_start(state)
     Terminal.move_cursor_left(state.cursor)
     {:continue, new_state}
   end
 
-  def handle_key(@ctrl_e, state) do
+  def handle_key(@ctrl_e, state, _terminal_mode) do
     new_state = State.move_to_end(state)
     move_count = String.length(state.buffer) - state.cursor
     Terminal.move_cursor_right(move_count)
     {:continue, new_state}
   end
 
-  def handle_key(@ctrl_b, state) do
+  def handle_key(@ctrl_b, state, _terminal_mode) do
     new_state = State.move_left(state)
     if new_state.cursor != state.cursor do
       Terminal.move_cursor_left(1)
@@ -87,7 +87,7 @@ defmodule ExReadline.Keybindings do
     {:continue, new_state}
   end
 
-  def handle_key(@ctrl_f, state) do
+  def handle_key(@ctrl_f, state, _terminal_mode) do
     new_state = State.move_right(state)
     if new_state.cursor != state.cursor do
       Terminal.move_cursor_right(1)
@@ -95,64 +95,64 @@ defmodule ExReadline.Keybindings do
     {:continue, new_state}
   end
 
-  def handle_key(@ctrl_k, state) do
+  def handle_key(@ctrl_k, state, _terminal_mode) do
     new_state = State.kill_to_end(state)
     Terminal.redraw_line(new_state)
     {:continue, new_state}
   end
 
-  def handle_key(@ctrl_u, state) do
+  def handle_key(@ctrl_u, state, _terminal_mode) do
     new_state = State.kill_to_start(state)
     Terminal.redraw_line(new_state)
     {:continue, new_state}
   end
 
-  def handle_key(@ctrl_w, state) do
+  def handle_key(@ctrl_w, state, _terminal_mode) do
     new_state = kill_word(state)
     Terminal.redraw_line(new_state)
     {:continue, new_state}
   end
 
-  def handle_key(@ctrl_l, state) do
+  def handle_key(@ctrl_l, state, _terminal_mode) do
     Terminal.clear_screen()
     Terminal.redraw_line(state)
     {:continue, state}
   end
 
-  def handle_key(@ctrl_p, state) do
+  def handle_key(@ctrl_p, state, _terminal_mode) do
     new_state = State.history_prev(state)
     Terminal.redraw_line(new_state)
     {:continue, new_state}
   end
 
-  def handle_key(@ctrl_n, state) do
+  def handle_key(@ctrl_n, state, _terminal_mode) do
     new_state = State.history_next(state)
     Terminal.redraw_line(new_state)
     {:continue, new_state}
   end
 
-  def handle_key(@tab, state) do
+  def handle_key(@tab, state, _terminal_mode) do
     new_state = handle_tab_completion(state)
     {:continue, new_state}
   end
 
-  def handle_key(char, state) when char >= 32 and char <= 126 do
+  def handle_key(char, state, _terminal_mode) when char >= 32 and char <= 126 do
     new_state = State.insert_char(state, char)
     Terminal.redraw_line(new_state)
     {:continue, new_state}
   end
 
-  def handle_key(_char, state) do
+  def handle_key(_char, state, _terminal_mode) do
     # Ignore unhandled keys
     {:continue, state}
   end
 
   # Private functions
 
-  defp handle_escape_sequence(state) do
-    case Terminal.read_key() do
+  defp handle_escape_sequence(state, terminal_mode) do
+    case Terminal.read_key(terminal_mode) do
       {:ok, ?[} ->
-        case Terminal.read_key() do
+        case Terminal.read_key(terminal_mode) do
           # Up arrow
           {:ok, ?A} ->
             new_state = State.history_prev(state)
@@ -183,7 +183,7 @@ defmodule ExReadline.Keybindings do
 
           # Delete key sequence
           {:ok, ?3} ->
-            case Terminal.read_key() do
+            case Terminal.read_key(terminal_mode) do
               {:ok, ?~} ->
                 new_state = State.delete_char(state)
                 Terminal.redraw_line(new_state)

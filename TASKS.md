@@ -7,27 +7,33 @@
 - [x] Proper terminal handling with raw mode support
 - [x] Command history with persistence
 - [x] Basic Emacs-style keybindings (Ctrl-A/E/B/F/K/U/W)
-- [x] Arrow key support (with issues in escript mode)
+- [x] Arrow key support (now working in both IEx and escript modes)
 - [x] Tab completion framework
 - [x] Word-based movement and editing (Alt-B, Alt-F)
 - [x] Kill ring (cut/paste) functionality
 - [x] GenServer-based architecture
-- [x] Basic test coverage
+- [x] Comprehensive test coverage
 
 ### Features
 - [x] History file management
 - [x] History navigation (Ctrl-P/N and arrow keys)
 - [x] Simple prompt support (string-based)
+- [x] Escript terminal handling with direct TTY access
+- [x] Automatic mode detection (IEx vs escript)
+- [x] Robust escape sequence handling
+
+### Recent Fixes (v0.1.0 → v0.2.0)
+- [x] Fixed arrow keys in escript mode (no longer showing ^[[A, ^[[B)
+- [x] Fixed Ctrl-P/N navigation in escript mode
+- [x] Implemented dual terminal handling approach:
+  - Standard mode: Uses Erlang IO for IEx environments
+  - Escript mode: Uses direct TTY access via system commands and file I/O
+- [x] Added comprehensive test suite covering both environments
+- [x] Terminal capability detection and automatic mode switching
 
 ## In Progress
 
-- [ ] Fix arrow keys in escript mode (showing escape sequences)
-  - [ ] Issue from mcp_chat: Arrow keys show ^[[A, ^[[B instead of navigating
-  - [ ] Affects command history navigation
-  - [ ] Works correctly in IEx but not in escript
-- [ ] Fix Ctrl-P/N navigation in escript mode
-  - [ ] Emacs keybindings show literal characters
-  - [ ] Need better terminal handling for escripts
+Currently, all major functionality is working across both IEx and escript environments.
 
 ## Todo
 

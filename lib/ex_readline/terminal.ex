@@ -8,6 +8,10 @@ defmodule ExReadline.Terminal do
   - Cursor movement
   - Screen clearing
   - ANSI escape sequence handling
+
+  Automatically detects and adapts to different runtime environments:
+  - IEx/Interactive mode: Uses standard Erlang IO
+  - Escript mode: Uses direct TTY access via system commands and file I/O
   """
 
   # ANSI escape sequences
@@ -16,44 +20,132 @@ defmodule ExReadline.Terminal do
   @clear_line "\r\e[2K"
   @clear_screen "\e[2J\e[H"
 
+  # Terminal mode detection
+  defp is_escript_mode?() do
+    # Check if we're running in an escript by examining terminal availability
+    case :io.getopts(:standard_io) do
+      opts when is_list(opts) ->
+        terminal_status = Keyword.get(opts, :terminal, :undefined)
+        terminal_status == :ebadf
+      _ ->
+        true
+    end
+  end
+
   @doc """
   Sets up the terminal for raw input mode.
 
   Returns the previous terminal settings which should be
   restored when done.
   """
-  @spec setup_raw_mode() :: keyword()
+  @spec setup_raw_mode() :: {:ok, term()} | {:error, term()}
   def setup_raw_mode() do
+    if is_escript_mode?() do
+      setup_raw_mode_escript()
+    else
+      setup_raw_mode_standard()
+    end
+  end
+
+  defp setup_raw_mode_standard() do
     old_settings = :io.getopts(:standard_io)
     # Ensure we flush any pending output first
     IO.write("")
     :io.setopts(:standard_io, binary: true, echo: false)
-    old_settings
+    {:ok, {:standard, old_settings}}
+  end
+
+  defp setup_raw_mode_escript() do
+    # For escript mode, we need to:
+    # 1. Save current terminal settings
+    # 2. Set raw mode using stty
+    # 3. Open /dev/tty for direct access
+    case System.cmd("stty", ["-g"], stderr_to_stdout: true) do
+      {settings, 0} ->
+        settings = String.trim(settings)
+        
+        # Set raw mode
+        case System.cmd("stty", ["raw", "-echo", "-isig", "-icanon"], stderr_to_stdout: true) do
+          {_, 0} ->
+            # Try to open /dev/tty for reading
+            case File.open("/dev/tty", [:binary, :read]) do
+              {:ok, tty_handle} ->
+                {:ok, {:escript, %{settings: settings, tty_handle: tty_handle}}}
+              {:error, reason} ->
+                # Restore settings on failure
+                System.cmd("stty", [settings])
+                {:error, {:tty_open_failed, reason}}
+            end
+          {error, _} ->
+            {:error, {:stty_failed, error}}
+        end
+      {error, _} ->
+        {:error, {:stty_get_failed, error}}
+    end
   end
 
   @doc """
   Restores the terminal to its previous mode.
   """
-  @spec restore_mode(keyword()) :: :ok
-  def restore_mode(old_settings) do
+  @spec restore_mode(term()) :: :ok
+  def restore_mode({:standard, old_settings}) do
     :io.setopts(:standard_io, old_settings)
     :ok
   end
+
+  def restore_mode({:escript, %{settings: settings, tty_handle: tty_handle}}) do
+    File.close(tty_handle)
+    System.cmd("stty", [settings])
+    :ok
+  end
+
+  def restore_mode(_), do: :ok
 
   @doc """
   Reads a single key from the terminal.
 
   Returns `{:ok, byte}` or `{:error, reason}`.
   """
-  @spec read_key() :: {:ok, byte()} | {:error, term()}
-  def read_key() do
+  @spec read_key(term()) :: {:ok, byte()} | {:error, term()}
+  def read_key(mode \\ nil)
+
+  def read_key(nil) do
+    # Auto-detect mode and read
+    if is_escript_mode?() do
+      case setup_raw_mode() do
+        {:ok, mode} ->
+          result = read_key(mode)
+          restore_mode(mode)
+          result
+        error ->
+          error
+      end
+    else
+      read_key_standard()
+    end
+  end
+
+  def read_key({:standard, _}) do
+    read_key_standard()
+  end
+
+  def read_key({:escript, %{tty_handle: tty_handle}}) do
+    case IO.binread(tty_handle, 1) do
+      :eof -> 
+        {:error, :eof}
+      {:error, reason} -> 
+        {:error, reason}
+      data when is_binary(data) -> 
+        {:ok, :binary.first(data)}
+    end
+  end
+
+  defp read_key_standard() do
     case IO.getn("", 1) do
       :eof -> 
         {:error, :eof}
-        
       {:error, reason} -> 
         {:error, reason}
-        
       data when is_binary(data) -> 
         {:ok, :binary.first(data)}
     end
