@@ -56,10 +56,23 @@ defmodule ExReadline.Terminal do
   end
 
   defp setup_raw_mode_escript() do
-    # For escript mode, we need to:
-    # 1. Save current terminal settings
-    # 2. Set raw mode using stty
-    # 3. Open /dev/tty for direct access
+    # For escript mode, we try multiple approaches:
+    # 1. First try direct TTY access (works in some environments)
+    # 2. Fall back to standard IO with escape sequence parsing (works everywhere)
+    
+    case try_tty_access() do
+      {:ok, tty_mode} ->
+        {:ok, tty_mode}
+      {:error, _reason} ->
+        # Fall back to standard IO with escape sequence parsing
+        old_settings = :io.getopts(:standard_io)
+        :io.setopts(:standard_io, binary: true, echo: false)
+        {:ok, {:escript_fallback, old_settings}}
+    end
+  end
+  
+  defp try_tty_access() do
+    # Try to use stty and /dev/tty if available
     case System.cmd("stty", ["-g"], stderr_to_stdout: true) do
       {settings, 0} ->
         settings = String.trim(settings)
@@ -96,6 +109,11 @@ defmodule ExReadline.Terminal do
   def restore_mode({:escript, %{settings: settings, tty_handle: tty_handle}}) do
     File.close(tty_handle)
     System.cmd("stty", [settings])
+    :ok
+  end
+
+  def restore_mode({:escript_fallback, old_settings}) do
+    :io.setopts(:standard_io, old_settings)
     :ok
   end
 
@@ -138,6 +156,10 @@ defmodule ExReadline.Terminal do
       data when is_binary(data) -> 
         {:ok, :binary.first(data)}
     end
+  end
+
+  def read_key({:escript_fallback, _}) do
+    read_key_standard()
   end
 
   defp read_key_standard() do

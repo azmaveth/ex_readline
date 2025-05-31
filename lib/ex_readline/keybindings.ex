@@ -6,7 +6,7 @@ defmodule ExReadline.Keybindings do
   It supports single-byte keys, control keys, and multi-byte escape sequences.
   """
 
-  alias ExReadline.{LineEditor.State, Terminal}
+  alias ExReadline.{LineEditor.State, Terminal, EscapeParser}
 
   # Key codes
   @backspace 127
@@ -63,7 +63,9 @@ defmodule ExReadline.Keybindings do
   end
 
   def handle_key(@escape, state, terminal_mode) do
-    handle_escape_sequence(state, terminal_mode)
+    case handle_escape_sequence(state, terminal_mode) do
+      result -> result
+    end
   end
 
   def handle_key(@ctrl_a, state, _terminal_mode) do
@@ -150,73 +152,73 @@ defmodule ExReadline.Keybindings do
   # Private functions
 
   defp handle_escape_sequence(state, terminal_mode) do
-    case Terminal.read_key(terminal_mode) do
-      {:ok, ?[} ->
-        case Terminal.read_key(terminal_mode) do
-          # Up arrow
-          {:ok, ?A} ->
-            new_state = State.history_prev(state)
-            Terminal.redraw_line(new_state)
-            {:continue, new_state}
+    case EscapeParser.parse_escape_sequence(terminal_mode) do
+      {:ok, :up} ->
+        new_state = State.history_prev(state)
+        Terminal.redraw_line(new_state)
+        {:continue, new_state}
 
-          # Down arrow
-          {:ok, ?B} ->
-            new_state = State.history_next(state)
-            Terminal.redraw_line(new_state)
-            {:continue, new_state}
+      {:ok, :down} ->
+        new_state = State.history_next(state)
+        Terminal.redraw_line(new_state)
+        {:continue, new_state}
 
-          # Right arrow
-          {:ok, ?C} ->
-            new_state = State.move_right(state)
-            if new_state.cursor != state.cursor do
-              Terminal.move_cursor_right(1)
-            end
-            {:continue, new_state}
-
-          # Left arrow
-          {:ok, ?D} ->
-            new_state = State.move_left(state)
-            if new_state.cursor != state.cursor do
-              Terminal.move_cursor_left(1)
-            end
-            {:continue, new_state}
-
-          # Delete key sequence
-          {:ok, ?3} ->
-            case Terminal.read_key(terminal_mode) do
-              {:ok, ?~} ->
-                new_state = State.delete_char(state)
-                Terminal.redraw_line(new_state)
-                {:continue, new_state}
-              _ ->
-                {:continue, state}
-            end
-
-          _ ->
-            {:continue, state}
+      {:ok, :right} ->
+        new_state = State.move_right(state)
+        if new_state.cursor != state.cursor do
+          Terminal.move_cursor_right(1)
         end
+        {:continue, new_state}
 
-      # Alt-b (move word backward)
-      {:ok, ?b} ->
+      {:ok, :left} ->
+        new_state = State.move_left(state)
+        if new_state.cursor != state.cursor do
+          Terminal.move_cursor_left(1)
+        end
+        {:continue, new_state}
+
+      {:ok, :home} ->
+        new_state = State.move_to_start(state)
+        Terminal.move_cursor_left(state.cursor)
+        {:continue, new_state}
+
+      {:ok, :end} ->
+        new_state = State.move_to_end(state)
+        move_count = String.length(state.buffer) - state.cursor
+        Terminal.move_cursor_right(move_count)
+        {:continue, new_state}
+
+      {:ok, :delete} ->
+        new_state = State.delete_char(state)
+        Terminal.redraw_line(new_state)
+        {:continue, new_state}
+
+      {:ok, {:alt, ?b}} ->
+        # Alt-b (move word backward)
         new_state = move_word_backward(state)
         move_count = state.cursor - new_state.cursor
         Terminal.move_cursor_left(move_count)
         {:continue, new_state}
 
-      # Alt-f (move word forward)
-      {:ok, ?f} ->
+      {:ok, {:alt, ?f}} ->
+        # Alt-f (move word forward)
         new_state = move_word_forward(state)
         move_count = new_state.cursor - state.cursor
         Terminal.move_cursor_right(move_count)
         {:continue, new_state}
 
-      # Alt-d (delete word forward)
-      {:ok, ?d} ->
+      {:ok, {:alt, ?d}} ->
+        # Alt-d (delete word forward)
         new_state = delete_word_forward(state)
         Terminal.redraw_line(new_state)
         {:continue, new_state}
 
-      _ ->
+      {:ok, :unknown} ->
+        # Unknown escape sequence, just ignore
+        {:continue, state}
+
+      {:error, _reason} ->
+        # Error reading escape sequence, ignore
         {:continue, state}
     end
   end

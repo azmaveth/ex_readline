@@ -109,29 +109,25 @@ defmodule ExReadline.LineEditor do
   @impl true
   def handle_call({:read_line, prompt, _opts}, _from, state) do
     # Set up terminal for raw input
-    case Terminal.setup_raw_mode() do
-      {:ok, terminal_mode} ->
-        # Initialize line state
-        line_state = State.new(
-          prompt: prompt,
-          history: state.history,
-          completion_fn: state.completion_fn
-        )
+    {:ok, terminal_mode} = Terminal.setup_raw_mode()
+    
+    # Initialize line state
+    line_state = State.new(
+      prompt: prompt,
+      history: state.history,
+      completion_fn: state.completion_fn
+    )
 
-        # Show prompt
-        IO.write(prompt)
+    # Show prompt
+    IO.write(prompt)
 
-        # Read input
-        result = read_loop(line_state, terminal_mode)
+    # Read input
+    result = read_loop(line_state, terminal_mode)
 
-        # Restore terminal settings
-        Terminal.restore_mode(terminal_mode)
-        
-        handle_result(result, state)
-        
-      {:error, reason} ->
-        {:reply, {:error, reason}, state}
-    end
+    # Restore terminal settings
+    Terminal.restore_mode(terminal_mode)
+    
+    handle_result(result, state)
   end
   
   defp handle_result(result, state) do
