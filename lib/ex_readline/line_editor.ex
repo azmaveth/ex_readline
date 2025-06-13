@@ -148,6 +148,12 @@ defmodule ExReadline.LineEditor do
 
       {:error, :interrupted} ->
         {:reply, :eof, state}
+        
+      {:error, :eof} ->
+        {:reply, :eof, state}
+        
+      {:error, _reason} ->
+        {:reply, :eof, state}
     end
   end
 
